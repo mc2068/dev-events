@@ -134,7 +134,7 @@ function generateSlug(title: string): string {
   return title
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+    .replace(/[^\p{L}\p{M}\p{N}\s-]/gu, '') // Remove special characters, keep letters and numbers of any language
     .replace(/\s+/g, '-') // Replace spaces with hyphens
     .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
     .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
@@ -142,11 +142,35 @@ function generateSlug(title: string): string {
 
 // Helper function to normalize date to ISO format
 function normalizeDate(dateString: string): string {
-  const date = new Date(dateString);
+  const input = dateString.trim();
+
+  // Plain YYYY-MM-DD: confirm it is a real calendar date (rejects e.g. February 30)
+  const isoDateMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateMatch) {
+    const [, year, month, day] = isoDateMatch.map(Number);
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    if (isNaN(utcDate.getTime()) || utcDate.toISOString().split('T')[0] !== input) {
+      throw new Error('Invalid date format');
+    }
+    return input;
+  }
+
+  const date = new Date(input);
   if (isNaN(date.getTime())) {
     throw new Error('Invalid date format');
   }
-  return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+
+  // Explicit timezone (Z, UTC, GMT or an offset like +05:00): normalize to the UTC date
+  const hasExplicitOffset = /\d{2}:\d{2}(:\d{2}(\.\d+)?)?\s*(Z|UTC|GMT|(UTC|GMT)?[+-]\d{2}:?\d{2})$/i.test(input);
+  if (hasExplicitOffset) {
+    return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+  }
+
+  // No timezone: keep the local calendar date instead of shifting it to UTC
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 // Helper function to normalize time format
@@ -164,6 +188,11 @@ function normalizeTime(timeString: string): string {
   const period = match[4]?.toUpperCase();
   
   if (period) {
+    // A 12-hour clock only has hours 1 to 12
+    if (hours < 1 || hours > 12) {
+      throw new Error('Invalid time values');
+    }
+
     // Convert 12-hour to 24-hour format
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
@@ -175,9 +204,6 @@ function normalizeTime(timeString: string): string {
   
   return `${hours.toString().padStart(2, '0')}:${minutes}`;
 }
-
-// Create unique index on slug for better performance
-EventSchema.index({ slug: 1 }, { unique: true });
 
 // Create compound index for common queries
 EventSchema.index({ date: 1, mode: 1 });
