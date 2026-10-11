@@ -11,7 +11,7 @@ import Link from 'next/link';
 const EventCard = ({title, image, slug, location, date, time}: props) => {
     return (
         <div id="event-card">
-            <Link href={`/event/${slug}`}>
+            <Link href={`/events/${slug}`}>
                 <Image src={image} alt={title} width={410} height={300} className="poster" />
                 <p className="title">{title}</p>
                 <div className="flex flex-row gap-2">
